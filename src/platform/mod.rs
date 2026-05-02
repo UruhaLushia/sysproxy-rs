@@ -1,15 +1,15 @@
-#[cfg(target_os = "linux")]
-pub mod linux;
 #[cfg(target_os = "macos")]
 pub mod darwin;
-#[cfg(target_os = "windows")]
-pub mod windows;
+#[cfg(target_os = "linux")]
+pub mod linux;
 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
 pub mod other;
+#[cfg(target_os = "windows")]
+pub mod windows;
 
-use anyhow::Result;
 use crate::options::Options;
 use crate::types::ProxyConfig;
+use anyhow::Result;
 
 pub fn disable_proxy(opt: Option<&Options>) -> Result<()> {
     #[cfg(target_os = "linux")]

@@ -1,23 +1,30 @@
-use anyhow::{anyhow, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
+use anyhow::{Result, anyhow};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::{Duration, Instant};
 
 use crate::options::Options;
 
-/// 监听 Windows 注册表代理设置变更
-pub fn wait_proxy_settings_change(
+pub fn wait_proxy_settings_change(cancel: Arc<AtomicBool>, opt: Option<&Options>) -> Result<()> {
+    wait_proxy_settings_change_timeout(cancel, opt, None).map(|_| ())
+}
+
+pub fn wait_proxy_settings_change_timeout(
     cancel: Arc<AtomicBool>,
     opt: Option<&Options>,
-) -> Result<()> {
+    timeout: Option<Duration>,
+) -> Result<bool> {
     validate_registry_target(opt)?;
 
-    use windows::Win32::Foundation::{ERROR_SUCCESS, HANDLE};
+    use windows::Win32::Foundation::{ERROR_SUCCESS, HANDLE, WAIT_TIMEOUT};
     use windows::Win32::System::Registry::{
-        RegNotifyChangeKeyValue, HKEY, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME,
-        REG_NOTIFY_THREAD_AGNOSTIC,
+        HKEY, REG_NOTIFY_CHANGE_LAST_SET, REG_NOTIFY_CHANGE_NAME, REG_NOTIFY_THREAD_AGNOSTIC,
+        RegNotifyChangeKeyValue,
     };
-    use windows::Win32::System::Threading::{CreateEventW, SetEvent, WaitForMultipleObjects, INFINITE};
+    use windows::Win32::System::Threading::{CreateEventW, WaitForMultipleObjects};
     use windows::core::PCWSTR;
+
+    const WAIT_SLICE: Duration = Duration::from_millis(200);
 
     let paths = [
         r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
@@ -27,34 +34,23 @@ pub fn wait_proxy_settings_change(
     let mut keys: Vec<HKEY> = Vec::new();
     let mut events: Vec<HANDLE> = Vec::new();
 
-    // Open registry keys
     for path in &paths {
         let key = open_current_user_key_notify(path)?;
         keys.push(key);
     }
 
-    // Create events for each key
     for key in &keys {
         let event = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }
             .map_err(|e| anyhow!("创建代理设置变更事件失败：{}", e))?;
         events.push(event);
 
-        let filter = REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_THREAD_AGNOSTIC;
-        let result = unsafe {
-            RegNotifyChangeKeyValue(
-                *key,
-                false,
-                filter,
-                Some(event),
-                true,
-            )
-        };
+        let filter =
+            REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_CHANGE_NAME | REG_NOTIFY_THREAD_AGNOSTIC;
+        let result = unsafe { RegNotifyChangeKeyValue(*key, false, filter, Some(event), true) };
         if result != ERROR_SUCCESS {
-            // Retry without REG_NOTIFY_THREAD_AGNOSTIC
             let filter2 = REG_NOTIFY_CHANGE_LAST_SET | REG_NOTIFY_CHANGE_NAME;
-            let result2 = unsafe {
-                RegNotifyChangeKeyValue(*key, false, filter2, Some(event), true)
-            };
+            let result2 =
+                unsafe { RegNotifyChangeKeyValue(*key, false, filter2, Some(event), true) };
             if result2 != ERROR_SUCCESS {
                 cleanup_keys_events(&keys, &events);
                 return Err(anyhow!("监听代理设置注册表失败：{}", result2.0));
@@ -62,41 +58,44 @@ pub fn wait_proxy_settings_change(
         }
     }
 
-    // Create cancel event
-    let cancel_event = unsafe { CreateEventW(None, false, false, PCWSTR::null()) }
-        .map_err(|e| anyhow!("创建取消事件失败：{}", e))?;
-    events.push(cancel_event);
-
-    let cancel_clone = Arc::clone(&cancel);
-    let cancel_handle_usize = cancel_event.0 as usize;
-    std::thread::spawn(move || {
-        loop {
-            if cancel_clone.load(Ordering::SeqCst) {
-                let h = windows::Win32::Foundation::HANDLE(cancel_handle_usize as *mut _);
-                unsafe { let _ = SetEvent(h); };
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(100));
+    let start = Instant::now();
+    let result = loop {
+        if cancel.load(Ordering::SeqCst) {
+            break Err(anyhow!("cancelled"));
         }
-    });
 
-    let handles: Vec<HANDLE> = events.clone();
-    let result = unsafe {
-        WaitForMultipleObjects(&handles, false, INFINITE)
+        let wait_ms = if let Some(limit) = timeout {
+            let Some(remaining) = limit.checked_sub(start.elapsed()) else {
+                break Ok(false);
+            };
+            if remaining.is_zero() {
+                break Ok(false);
+            }
+            remaining.min(WAIT_SLICE).as_millis().max(1) as u32
+        } else {
+            WAIT_SLICE.as_millis() as u32
+        };
+
+        let wait_result = unsafe { WaitForMultipleObjects(&events, false, wait_ms) };
+        if wait_result.0 == WAIT_TIMEOUT.0 {
+            if timeout
+                .map(|limit| start.elapsed() >= limit)
+                .unwrap_or(false)
+            {
+                break Ok(false);
+            }
+            continue;
+        }
+
+        let idx = wait_result.0;
+        if idx >= events.len() as u32 {
+            break Err(anyhow!("等待代理设置变更失败：返回值 {}", idx));
+        }
+        break Ok(true);
     };
 
     cleanup_keys_events(&keys, &events);
-
-    let idx = result.0;
-    let cancel_idx = (handles.len() - 1) as u32;
-
-    if idx == cancel_idx {
-        return Err(anyhow!("cancelled"));
-    }
-    if idx >= handles.len() as u32 {
-        return Err(anyhow!("等待代理设置变更失败：返回值 {}", idx));
-    }
-    Ok(())
+    result
 }
 
 fn validate_registry_target(opt: Option<&Options>) -> Result<()> {
@@ -111,7 +110,7 @@ fn validate_registry_target(opt: Option<&Options>) -> Result<()> {
 
 fn open_current_user_key_notify(path: &str) -> Result<windows::Win32::System::Registry::HKEY> {
     use windows::Win32::System::Registry::{
-        RegOpenCurrentUser, RegOpenKeyExW, HKEY, KEY_NOTIFY, REG_SAM_FLAGS,
+        HKEY, KEY_NOTIFY, REG_SAM_FLAGS, RegOpenCurrentUser, RegOpenKeyExW,
     };
     use windows::core::PCWSTR;
 
@@ -143,9 +142,13 @@ fn cleanup_keys_events(
     events: &[windows::Win32::Foundation::HANDLE],
 ) {
     for &key in keys {
-        unsafe { let _ = windows::Win32::System::Registry::RegCloseKey(key); };
+        unsafe {
+            let _ = windows::Win32::System::Registry::RegCloseKey(key);
+        };
     }
     for &ev in events {
-        unsafe { let _ = windows::Win32::Foundation::CloseHandle(ev); };
+        unsafe {
+            let _ = windows::Win32::Foundation::CloseHandle(ev);
+        };
     }
 }

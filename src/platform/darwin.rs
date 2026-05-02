@@ -1,9 +1,9 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 use std::process::Command;
 
 use crate::options::Options;
-use crate::types::{format_server, parse_server_string, ProxyConfig};
+use crate::types::{ProxyConfig, format_server, parse_server_string};
 
 pub fn disable_proxy(opt: Option<&Options>) -> Result<()> {
     let services = get_target_services(opt)?;
@@ -14,11 +14,7 @@ pub fn disable_proxy(opt: Option<&Options>) -> Result<()> {
         &["-setsecurewebproxystate", "off"],
         &["-setsocksfirewallproxystate", "off"],
     ];
-    apply_network_services(
-        &services,
-        commands,
-        crate::options::resolve_concurrent(opt),
-    )
+    apply_network_services(&services, commands, crate::options::resolve_concurrent(opt))
 }
 
 pub fn set_proxy(opt: Option<&Options>) -> Result<()> {
@@ -236,7 +232,11 @@ fn get_network_services(only_active: bool) -> Result<Vec<String>> {
                 .and_then(|next| device_re.captures(next))
                 .map(|caps| caps[1].trim().to_string())
                 .unwrap_or_default();
-            if lines.peek().map(|next| device_re.is_match(next)).unwrap_or(false) {
+            if lines
+                .peek()
+                .map(|next| device_re.is_match(next))
+                .unwrap_or(false)
+            {
                 lines.next();
             }
 
@@ -258,8 +258,7 @@ fn get_network_services(only_active: bool) -> Result<Vec<String>> {
 
 fn get_active_interface_names() -> Result<Vec<String>> {
     // Use getifaddrs via nix
-    let ifaces = nix::ifaddrs::getifaddrs()
-        .map_err(|e| anyhow!("无法获取网络接口：{}", e))?;
+    let ifaces = nix::ifaddrs::getifaddrs().map_err(|e| anyhow!("无法获取网络接口：{}", e))?;
 
     let mut names: Vec<String> = Vec::new();
     for iface in ifaces {
@@ -341,7 +340,12 @@ fn exec_networksetup_serial(service: &str, commands: &[Vec<String>]) -> Result<(
             .args(&args)
             .status()
             .map_err(|e| {
-                anyhow!("执行 networksetup {:?} 时出错，服务 {}: {}", cmd, service, e)
+                anyhow!(
+                    "执行 networksetup {:?} 时出错，服务 {}: {}",
+                    cmd,
+                    service,
+                    e
+                )
             })?;
         if !status.success() {
             return Err(anyhow!(
@@ -405,9 +409,7 @@ fn exec_networksetup_concurrent(service: &str, commands: &[Vec<String>]) -> Resu
 }
 
 /// 解析 networksetup -get*proxy 命令输出，返回 (host, port) 或 None（未启用）
-fn parse_proxy_output(
-    output: &std::process::Output,
-) -> Option<(String, String)> {
+fn parse_proxy_output(output: &std::process::Output) -> Option<(String, String)> {
     if !output.status.success() {
         return None;
     }
@@ -426,11 +428,7 @@ fn parse_proxy_output(
         }
     }
 
-    if enabled {
-        Some((host, port))
-    } else {
-        None
-    }
+    if enabled { Some((host, port)) } else { None }
 }
 
 // Simple inline regex helpers to avoid regex crate dependency
@@ -466,7 +464,9 @@ impl SimpleRegex {
                 // Matches: "(Hardware Port: ..., Device: eth0, ...)"
                 if let Some(pos) = line.find("Device: ") {
                     let rest = &line[pos + 8..];
-                    let end = rest.find(|c: char| c == ',' || c == ')').unwrap_or(rest.len());
+                    let end = rest
+                        .find(|c: char| c == ',' || c == ')')
+                        .unwrap_or(rest.len());
                     let device = rest[..end].trim();
                     return Some(vec![line, device]);
                 }

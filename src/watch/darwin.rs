@@ -1,17 +1,14 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::os::fd::AsRawFd;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::options::Options;
 
 const SYSTEM_CONFIGURATION_PREFERENCES_PATH: &str =
     "/Library/Preferences/SystemConfiguration/preferences.plist";
 
-pub fn wait_proxy_settings_change(
-    cancel: Arc<AtomicBool>,
-    _opt: Option<&Options>,
-) -> Result<()> {
+pub fn wait_proxy_settings_change(cancel: Arc<AtomicBool>, _opt: Option<&Options>) -> Result<()> {
     use nix::sys::event::{EvFlags, EventFilter, FilterFlag, KEvent, Kqueue};
     use nix::sys::stat::stat;
 
@@ -42,7 +39,10 @@ pub fn wait_proxy_settings_change(
     kq.kevent(&[change], &mut [], None)
         .map_err(|e| anyhow!("注册 macOS 系统代理配置监听失败：{}", e))?;
 
-    let timeout = nix::libc::timespec { tv_sec: 1, tv_nsec: 0 };
+    let timeout = nix::libc::timespec {
+        tv_sec: 1,
+        tv_nsec: 0,
+    };
     let mut events = vec![KEvent::new(
         0,
         EventFilter::EVFILT_VNODE,

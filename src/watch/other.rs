@@ -1,13 +1,10 @@
-use anyhow::{anyhow, Result};
-use std::sync::atomic::{AtomicBool, Ordering};
+use anyhow::{Result, anyhow};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::options::Options;
 
-pub fn wait_proxy_settings_change(
-    cancel: Arc<AtomicBool>,
-    _opt: Option<&Options>,
-) -> Result<()> {
+pub fn wait_proxy_settings_change(cancel: Arc<AtomicBool>, _opt: Option<&Options>) -> Result<()> {
     loop {
         if cancel.load(Ordering::SeqCst) {
             return Err(anyhow!("cancelled"));

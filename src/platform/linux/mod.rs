@@ -1,10 +1,10 @@
 pub mod context;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 
 use crate::options::Options;
-use crate::types::{clean_output, format_server, parse_server_string, ProxyConfig};
+use crate::types::{ProxyConfig, clean_output, format_server, parse_server_string};
 use context::LinuxExecContext;
 
 /// 桌面环境检测结果
@@ -134,8 +134,14 @@ fn query_gnome_settings(e: &Environment) -> Result<ProxyConfig> {
     let keys: &[(&str, &[&str])] = &[
         ("mode", &["org.gnome.system.proxy", "mode"]),
         ("ignore-hosts", &["org.gnome.system.proxy", "ignore-hosts"]),
-        ("autoconfig-url", &["org.gnome.system.proxy", "autoconfig-url"]),
-        ("use-same-proxy", &["org.gnome.system.proxy", "use-same-proxy"]),
+        (
+            "autoconfig-url",
+            &["org.gnome.system.proxy", "autoconfig-url"],
+        ),
+        (
+            "use-same-proxy",
+            &["org.gnome.system.proxy", "use-same-proxy"],
+        ),
         ("http_host", &["org.gnome.system.proxy.http", "host"]),
         ("http_port", &["org.gnome.system.proxy.http", "port"]),
         ("https_host", &["org.gnome.system.proxy.https", "host"]),
@@ -169,10 +175,14 @@ fn query_gnome_settings(e: &Environment) -> Result<ProxyConfig> {
     }
 
     let mut config = ProxyConfig::default();
-    config.proxy.enable = clean_output(settings.get("mode").map(String::as_str).unwrap_or(""))
-        == "manual";
-    config.proxy.same_for_all =
-        clean_output(settings.get("use-same-proxy").map(String::as_str).unwrap_or("")) == "true";
+    config.proxy.enable =
+        clean_output(settings.get("mode").map(String::as_str).unwrap_or("")) == "manual";
+    config.proxy.same_for_all = clean_output(
+        settings
+            .get("use-same-proxy")
+            .map(String::as_str)
+            .unwrap_or(""),
+    ) == "true";
 
     config.proxy.servers = HashMap::from([
         (
@@ -205,8 +215,12 @@ fn query_gnome_settings(e: &Environment) -> Result<ProxyConfig> {
         ),
     ]);
 
-    let bypass_raw =
-        clean_output(settings.get("ignore-hosts").map(String::as_str).unwrap_or(""));
+    let bypass_raw = clean_output(
+        settings
+            .get("ignore-hosts")
+            .map(String::as_str)
+            .unwrap_or(""),
+    );
     if !bypass_raw.is_empty() {
         let items: Vec<String> = bypass_raw
             .split(',')
@@ -218,8 +232,12 @@ fn query_gnome_settings(e: &Environment) -> Result<ProxyConfig> {
 
     config.pac.enable =
         clean_output(settings.get("mode").map(String::as_str).unwrap_or("")) == "auto";
-    config.pac.url =
-        clean_output(settings.get("autoconfig-url").map(String::as_str).unwrap_or(""));
+    config.pac.url = clean_output(
+        settings
+            .get("autoconfig-url")
+            .map(String::as_str)
+            .unwrap_or(""),
+    );
 
     Ok(config)
 }
@@ -235,7 +253,12 @@ fn set_gnome_proxy(e: &Environment, config: &ProxyConfig) -> Result<()> {
     ];
 
     for (proxy_type, key) in &proxy_types {
-        let server = config.proxy.servers.get(*key).map(String::as_str).unwrap_or("");
+        let server = config
+            .proxy
+            .servers
+            .get(*key)
+            .map(String::as_str)
+            .unwrap_or("");
         if server.is_empty() {
             continue;
         }
@@ -251,7 +274,12 @@ fn set_gnome_proxy(e: &Environment, config: &ProxyConfig) -> Result<()> {
     if !config.proxy.bypass.is_empty() {
         let bypass_list = format!(
             "['{}']",
-            config.proxy.bypass.split(',').collect::<Vec<_>>().join("','")
+            config
+                .proxy
+                .bypass
+                .split(',')
+                .collect::<Vec<_>>()
+                .join("','")
         );
         exec_gsettings(e, "org.gnome.system.proxy", "ignore-hosts", &bypass_list)?;
     }
@@ -260,13 +288,22 @@ fn set_gnome_proxy(e: &Environment, config: &ProxyConfig) -> Result<()> {
         e,
         "org.gnome.system.proxy",
         "use-same-proxy",
-        if config.proxy.same_for_all { "true" } else { "false" },
+        if config.proxy.same_for_all {
+            "true"
+        } else {
+            "false"
+        },
     )
 }
 
 fn set_gnome_pac(e: &Environment, config: &ProxyConfig) -> Result<()> {
     exec_gsettings(e, "org.gnome.system.proxy", "mode", "auto")?;
-    exec_gsettings(e, "org.gnome.system.proxy", "autoconfig-url", &config.pac.url)
+    exec_gsettings(
+        e,
+        "org.gnome.system.proxy",
+        "autoconfig-url",
+        &config.pac.url,
+    )
 }
 
 fn clear_gnome_proxy(e: &Environment) -> Result<()> {
@@ -368,7 +405,10 @@ fn query_kde_settings(e: &Environment) -> Result<ProxyConfig> {
 
     config.proxy.bypass = values.get("NoProxyFor").cloned().unwrap_or_default();
     config.pac.enable = values.get("ProxyType").map(String::as_str) == Some("2");
-    config.pac.url = values.get("Proxy Config Script").cloned().unwrap_or_default();
+    config.pac.url = values
+        .get("Proxy Config Script")
+        .cloned()
+        .unwrap_or_default();
 
     Ok(config)
 }
@@ -384,7 +424,12 @@ fn set_kde_proxy(e: &Environment, config: &ProxyConfig) -> Result<()> {
         ("ftpProxy", "ftp_server"),
     ];
     for (kde_key, config_key) in &servers {
-        let value = config.proxy.servers.get(*config_key).map(String::as_str).unwrap_or("");
+        let value = config
+            .proxy
+            .servers
+            .get(*config_key)
+            .map(String::as_str)
+            .unwrap_or("");
         exec_kde_config(e, write_cmd, kde_key, value, group)?;
     }
 
@@ -393,7 +438,11 @@ fn set_kde_proxy(e: &Environment, config: &ProxyConfig) -> Result<()> {
         e,
         write_cmd,
         "UseSameProxy",
-        if config.proxy.same_for_all { "true" } else { "false" },
+        if config.proxy.same_for_all {
+            "true"
+        } else {
+            "false"
+        },
         group,
     )
 }
@@ -409,16 +458,21 @@ fn clear_kde_proxy(e: &Environment) -> Result<()> {
     exec_kde_config(e, write_cmd, "ProxyType", "0", group)
 }
 
-fn exec_kde_config(
-    e: &Environment,
-    cmd: &str,
-    key: &str,
-    value: &str,
-    group: &str,
-) -> Result<()> {
+fn exec_kde_config(e: &Environment, cmd: &str, key: &str, value: &str, group: &str) -> Result<()> {
     let status = e
         .ctx
-        .command(cmd, &["--file", "kioslaverc", "--group", group, "--key", key, value])
+        .command(
+            cmd,
+            &[
+                "--file",
+                "kioslaverc",
+                "--group",
+                group,
+                "--key",
+                key,
+                value,
+            ],
+        )
         .status()
         .map_err(|e2| anyhow!("执行 {} 失败：{}", cmd, e2))?;
     if !status.success() {

@@ -64,12 +64,10 @@ impl LinuxExecContext {
             let gid = self.gid;
             unsafe {
                 cmd.pre_exec(move || {
-                    nix::unistd::setgid(nix::unistd::Gid::from_raw(gid)).map_err(|e| {
-                        std::io::Error::from_raw_os_error(e as i32)
-                    })?;
-                    nix::unistd::setuid(nix::unistd::Uid::from_raw(uid)).map_err(|e| {
-                        std::io::Error::from_raw_os_error(e as i32)
-                    })?;
+                    nix::unistd::setgid(nix::unistd::Gid::from_raw(gid))
+                        .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
+                    nix::unistd::setuid(nix::unistd::Uid::from_raw(uid))
+                        .map_err(|e| std::io::Error::from_raw_os_error(e as i32))?;
                     Ok(())
                 });
             }
@@ -129,8 +127,7 @@ fn ensure_linux_session_env(env_map: &mut HashMap<String, String>, uid: u32) {
 
 fn read_process_env(pid: i32) -> Result<HashMap<String, String>> {
     let path = PathBuf::from(format!("/proc/{}/environ", pid));
-    let data =
-        std::fs::read(&path).with_context(|| format!("无法读取 {}", path.display()))?;
+    let data = std::fs::read(&path).with_context(|| format!("无法读取 {}", path.display()))?;
 
     let mut map = HashMap::new();
     for item in data.split(|&b| b == 0) {

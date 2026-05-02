@@ -2,15 +2,16 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use sysproxy::{
-    apply_guard_proxy_settings as _apply_guard_proxy_settings, disable_proxy as _disable_proxy,
+    Options, apply_guard_proxy_settings as _apply_guard_proxy_settings,
+    disable_proxy as _disable_proxy,
     guard_proxy_settings_after_apply as _guard_proxy_settings_after_apply,
     query_proxy_settings as _query_proxy_settings, set_pac as _set_pac, set_proxy as _set_proxy,
-    wait_proxy_settings_change as _wait_proxy_settings_change, Options,
+    wait_proxy_settings_change as _wait_proxy_settings_change,
 };
 
 // ── 暴露给 JS 的类型 ──────────────────────────────────────────────────────────

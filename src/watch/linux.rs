@@ -1,18 +1,15 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::options::Options;
 use crate::platform::linux::context::LinuxExecContext;
 
 /// 等待系统代理设置变更。
 /// `cancel` 置为 true 时函数尽快返回 Err("cancelled")。
-pub fn wait_proxy_settings_change(
-    cancel: Arc<AtomicBool>,
-    opt: Option<&Options>,
-) -> Result<()> {
+pub fn wait_proxy_settings_change(cancel: Arc<AtomicBool>, opt: Option<&Options>) -> Result<()> {
     let ctx = LinuxExecContext::new(opt)?;
     let desktop = ctx
         .env_map
@@ -40,10 +37,7 @@ pub fn wait_proxy_settings_change(
 
 // ── GNOME ──────────────────────────────────────────────────────────────────
 
-fn wait_gnome_proxy_settings_change(
-    cancel: Arc<AtomicBool>,
-    ctx: &LinuxExecContext,
-) -> Result<()> {
+fn wait_gnome_proxy_settings_change(cancel: Arc<AtomicBool>, ctx: &LinuxExecContext) -> Result<()> {
     let schemas = [
         "org.gnome.system.proxy",
         "org.gnome.system.proxy.http",
@@ -113,9 +107,7 @@ fn wait_gsettings_schema_change(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
-        .map_err(|e| {
-            anyhow!("启动 GNOME 代理设置监听失败：{}：{}", schema, e)
-        })?;
+        .map_err(|e| anyhow!("启动 GNOME 代理设置监听失败：{}：{}", schema, e))?;
 
     let stdout = child.stdout.take().unwrap();
     let mut reader = BufReader::new(stdout);
@@ -128,7 +120,7 @@ fn wait_gsettings_schema_change(
             return Ok(false);
         }
         // Non-blocking line read attempt using peek
-let available = reader.fill_buf().map(|b| b.len()).unwrap_or(0);
+        let available = reader.fill_buf().map(|b| b.len()).unwrap_or(0);
         if available > 0 {
             line.clear();
             reader.read_line(&mut line)?;
@@ -151,10 +143,7 @@ let available = reader.fill_buf().map(|b| b.len()).unwrap_or(0);
 
 // ── KDE ────────────────────────────────────────────────────────────────────
 
-fn wait_kde_proxy_settings_change(
-    cancel: Arc<AtomicBool>,
-    ctx: &LinuxExecContext,
-) -> Result<()> {
+fn wait_kde_proxy_settings_change(cancel: Arc<AtomicBool>, ctx: &LinuxExecContext) -> Result<()> {
     let config_path = kde_proxy_config_path(ctx)?;
 
     // If the config file doesn't exist, watch the directory
@@ -184,13 +173,7 @@ fn wait_kde_proxy_settings_change(
 
     inotify
         .add_watch(&watch_path, flags)
-        .map_err(|e| {
-            anyhow!(
-                "监听 KDE 代理配置文件失败：{}：{}",
-                watch_path.display(),
-                e
-            )
-        })?;
+        .map_err(|e| anyhow!("监听 KDE 代理配置文件失败：{}：{}", watch_path.display(), e))?;
 
     loop {
         if cancel.load(Ordering::SeqCst) {
@@ -198,12 +181,9 @@ fn wait_kde_proxy_settings_change(
         }
 
         // Use poll with a 1-second timeout on the inotify fd
-        use nix::poll::{poll, PollFd, PollFlags};
+        use nix::poll::{PollFd, PollFlags, poll};
         use std::os::unix::io::AsFd;
-        let mut fds = [PollFd::new(
-            inotify.as_fd(),
-            PollFlags::POLLIN,
-        )];
+        let mut fds = [PollFd::new(inotify.as_fd(), PollFlags::POLLIN)];
 
         match poll(&mut fds, 1000u16) {
             Err(nix::errno::Errno::EINTR) => continue,

@@ -1,6 +1,6 @@
-use anyhow::{anyhow, Result};
 use crate::options::Options;
 use crate::types::ProxyConfig;
+use anyhow::{Result, anyhow};
 
 pub fn disable_proxy(_opt: Option<&Options>) -> Result<()> {
     Err(anyhow!("不支持的操作系统"))

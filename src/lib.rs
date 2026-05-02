@@ -7,9 +7,9 @@ pub mod watch;
 pub use guard::{
     apply_guard_proxy_settings, guard_proxy_settings, guard_proxy_settings_after_apply,
 };
-pub use options::{default_concurrent, resolve_concurrent, Options};
+pub use options::{Options, default_concurrent, resolve_concurrent};
 pub use types::{
-    clean_output, format_server, parse_server_string, PacInfo, ProxyConfig, ProxyInfo, ServerAddr,
+    PacInfo, ProxyConfig, ProxyInfo, ServerAddr, clean_output, format_server, parse_server_string,
 };
 
 pub use platform::{disable_proxy, query_proxy_settings, set_pac, set_proxy};

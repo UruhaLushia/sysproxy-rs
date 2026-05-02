@@ -1,13 +1,13 @@
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 use sysproxy::{
-    apply_guard_proxy_settings, default_concurrent, disable_proxy,
+    Options, apply_guard_proxy_settings, default_concurrent, disable_proxy,
     guard_proxy_settings_after_apply, query_proxy_settings, set_pac, set_proxy,
-    wait_proxy_settings_change, Options,
+    wait_proxy_settings_change,
 };
 
 // ── CLI 数据结构 ──────────────────────────────────────────────────────────────
@@ -21,12 +21,21 @@ struct Cli {
 }
 
 enum Commands {
-    Proxy { server: String, bypass: String },
-    Pac { url: String },
+    Proxy {
+        server: String,
+        bypass: String,
+    },
+    Pac {
+        url: String,
+    },
     Disable,
     Status,
     Watch,
-    Guard { server: String, bypass: String, url: String },
+    Guard {
+        server: String,
+        bypass: String,
+        url: String,
+    },
 }
 
 // ── 参数解析 ──────────────────────────────────────────────────────────────────
@@ -41,7 +50,9 @@ fn parse_args() -> Result<Cli> {
 
     let only_active_device = args.contains(["-a", "--only-active-device"]);
     let registry = args.contains("--registry");
-    let device: String = args.opt_value_from_str(["-d", "--device"])?.unwrap_or_default();
+    let device: String = args
+        .opt_value_from_str(["-d", "--device"])?
+        .unwrap_or_default();
     let multithread = if args.contains("--multithread") {
         true
     } else if args.contains("--no-multithread") {
@@ -57,24 +68,42 @@ fn parse_args() -> Result<Cli> {
 
     let command = match subcmd.as_str() {
         "proxy" => Commands::Proxy {
-            server: args.opt_value_from_str(["-s", "--server"])?.unwrap_or_default(),
-            bypass: args.opt_value_from_str(["-b", "--bypass"])?.unwrap_or_default(),
+            server: args
+                .opt_value_from_str(["-s", "--server"])?
+                .unwrap_or_default(),
+            bypass: args
+                .opt_value_from_str(["-b", "--bypass"])?
+                .unwrap_or_default(),
         },
         "pac" => Commands::Pac {
-            url: args.opt_value_from_str(["-u", "--url"])?.unwrap_or_default(),
+            url: args
+                .opt_value_from_str(["-u", "--url"])?
+                .unwrap_or_default(),
         },
         "disable" => Commands::Disable,
-        "status"  => Commands::Status,
-        "watch"   => Commands::Watch,
+        "status" => Commands::Status,
+        "watch" => Commands::Watch,
         "guard" => Commands::Guard {
-            server: args.opt_value_from_str(["-s", "--server"])?.unwrap_or_default(),
-            bypass: args.opt_value_from_str(["-b", "--bypass"])?.unwrap_or_default(),
-            url:    args.opt_value_from_str(["-u", "--url"])?.unwrap_or_default(),
+            server: args
+                .opt_value_from_str(["-s", "--server"])?
+                .unwrap_or_default(),
+            bypass: args
+                .opt_value_from_str(["-b", "--bypass"])?
+                .unwrap_or_default(),
+            url: args
+                .opt_value_from_str(["-u", "--url"])?
+                .unwrap_or_default(),
         },
         other => return Err(anyhow!("未知子命令：{}", other)),
     };
 
-    Ok(Cli { only_active_device, device, multithread, registry, command })
+    Ok(Cli {
+        only_active_device,
+        device,
+        multithread,
+        registry,
+        command,
+    })
 }
 
 fn print_help() {
@@ -167,7 +196,11 @@ fn main() -> Result<()> {
             }
         }
 
-        Commands::Guard { server, bypass, url } => {
+        Commands::Guard {
+            server,
+            bypass,
+            url,
+        } => {
             let opt = opts!(proxy: server.clone(), bypass: bypass.clone(), pac_url: url.clone());
 
             let cancel = Arc::new(AtomicBool::new(false));

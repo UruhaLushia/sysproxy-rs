@@ -1,19 +1,18 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use std::collections::HashMap;
 
 use crate::options::Options;
 use crate::types::ProxyConfig;
 
-use windows::core::PCWSTR;
 use windows::Win32::Networking::WinInet::{
-    InternetQueryOptionW, InternetSetOptionW, INTERNET_OPTION_PER_CONNECTION_OPTION,
-    INTERNET_OPTION_PROXY_SETTINGS_CHANGED, INTERNET_OPTION_REFRESH,
-    INTERNET_PER_CONN_AUTOCONFIG_URL, INTERNET_PER_CONN_FLAGS, INTERNET_PER_CONN_OPTIONW,
-    INTERNET_PER_CONN_OPTION_LISTW, INTERNET_PER_CONN_PROXY_BYPASS,
-    INTERNET_PER_CONN_PROXY_SERVER, PROXY_TYPE_AUTO_PROXY_URL, PROXY_TYPE_DIRECT,
-    PROXY_TYPE_PROXY,
+    INTERNET_OPTION_PER_CONNECTION_OPTION, INTERNET_OPTION_PROXY_SETTINGS_CHANGED,
+    INTERNET_OPTION_REFRESH, INTERNET_PER_CONN_AUTOCONFIG_URL, INTERNET_PER_CONN_FLAGS,
+    INTERNET_PER_CONN_OPTION_LISTW, INTERNET_PER_CONN_OPTIONW, INTERNET_PER_CONN_PROXY_BYPASS,
+    INTERNET_PER_CONN_PROXY_SERVER, InternetQueryOptionW, InternetSetOptionW,
+    PROXY_TYPE_AUTO_PROXY_URL, PROXY_TYPE_DIRECT, PROXY_TYPE_PROXY,
 };
 use windows::Win32::System::Registry::*;
+use windows::core::PCWSTR;
 
 const INTERNET_SETTINGS_REG_PATH: &str =
     r"Software\Microsoft\Windows\CurrentVersion\Internet Settings";
@@ -167,10 +166,9 @@ pub fn query_proxy_settings(opt: Option<&Options>) -> Result<ProxyConfig> {
     let flags = unsafe { options[0].Value.dwValue };
     let mut config = ProxyConfig::default();
     config.proxy.enable = (flags & PROXY_TYPE_PROXY) != 0;
-    config.proxy.servers = HashMap::from([(
-        "http_server".into(),
-        unsafe { pwstr_to_string(options[1].Value.pszValue) },
-    )]);
+    config.proxy.servers = HashMap::from([("http_server".into(), unsafe {
+        pwstr_to_string(options[1].Value.pszValue)
+    })]);
     config.proxy.bypass = unsafe { pwstr_to_string(options[2].Value.pszValue) };
     config.pac.enable = (flags & PROXY_TYPE_AUTO_PROXY_URL) != 0;
     config.pac.url = unsafe { pwstr_to_string(options[3].Value.pszValue) };
@@ -215,8 +213,10 @@ fn refresh_and_apply_settings(
     let opts_ptr = options.as_ptr() as usize;
     let opts_len = options.len();
     let apply_conn = move |name: &str| -> Result<()> {
-        let mut local_options: Vec<INTERNET_PER_CONN_OPTIONW> =
-            unsafe { std::slice::from_raw_parts(opts_ptr as *const INTERNET_PER_CONN_OPTIONW, opts_len) }.to_vec();
+        let mut local_options: Vec<INTERNET_PER_CONN_OPTIONW> = unsafe {
+            std::slice::from_raw_parts(opts_ptr as *const INTERNET_PER_CONN_OPTIONW, opts_len)
+        }
+        .to_vec();
         let mut name_wide: Vec<u16>;
         let psz_conn = if !name.is_empty() {
             name_wide = to_wide_null(name);
@@ -254,12 +254,7 @@ fn refresh_and_apply_settings(
     }
 
     unsafe {
-        let _ = InternetSetOptionW(
-            None,
-            INTERNET_OPTION_PROXY_SETTINGS_CHANGED,
-            None,
-            0,
-        );
+        let _ = InternetSetOptionW(None, INTERNET_OPTION_PROXY_SETTINGS_CHANGED, None, 0);
         let _ = InternetSetOptionW(None, INTERNET_OPTION_REFRESH, None, 0);
     }
     Ok(())
@@ -334,7 +329,9 @@ fn enum_all_connection_names() -> Result<Vec<String>> {
         }
         idx += 1;
     }
-    unsafe { let _ = RegCloseKey(key); };
+    unsafe {
+        let _ = RegCloseKey(key);
+    };
     Ok(names)
 }
 
@@ -395,20 +392,10 @@ fn reg_set_string(key: HKEY, name: &str, value: &str) -> Result<()> {
     let name_wide = to_wide_null(name);
     let value_wide = to_wide_null(value);
     let data: &[u8] = unsafe {
-        std::slice::from_raw_parts(
-            value_wide.as_ptr() as *const u8,
-            value_wide.len() * 2,
-        )
+        std::slice::from_raw_parts(value_wide.as_ptr() as *const u8, value_wide.len() * 2)
     };
-    let result = unsafe {
-        RegSetValueExW(
-            key,
-            PCWSTR(name_wide.as_ptr()),
-            None,
-            REG_SZ,
-            Some(data),
-        )
-    };
+    let result =
+        unsafe { RegSetValueExW(key, PCWSTR(name_wide.as_ptr()), None, REG_SZ, Some(data)) };
     if result != windows::Win32::Foundation::ERROR_SUCCESS {
         return Err(anyhow!("RegSetValueExW({}) 失败", name));
     }
@@ -501,7 +488,9 @@ fn disable_proxy_registry(opt: Option<&Options>) -> Result<()> {
     reg_set_dword(key, "ProxyEnable", 0)?;
     reg_set_dword(key, "AutoDetect", 0)?;
     reg_delete_value(key, "AutoConfigURL")?;
-    unsafe { let _ = RegCloseKey(key); };
+    unsafe {
+        let _ = RegCloseKey(key);
+    };
     Ok(())
 }
 
@@ -531,7 +520,9 @@ fn set_proxy_registry(opt: Option<&Options>) -> Result<()> {
     reg_set_string(key, "ProxyOverride", &bypass)?;
     reg_set_dword(key, "AutoDetect", 0)?;
     reg_delete_value(key, "AutoConfigURL")?;
-    unsafe { let _ = RegCloseKey(key); };
+    unsafe {
+        let _ = RegCloseKey(key);
+    };
     Ok(())
 }
 
@@ -550,7 +541,9 @@ fn set_pac_registry(opt: Option<&Options>) -> Result<()> {
     if !pac_url.is_empty() {
         reg_set_string(key, "AutoConfigURL", &pac_url)?;
     }
-    unsafe { let _ = RegCloseKey(key); };
+    unsafe {
+        let _ = RegCloseKey(key);
+    };
     Ok(())
 }
 
@@ -560,7 +553,9 @@ fn query_proxy_settings_registry() -> Result<ProxyConfig> {
     let proxy_server = reg_read_string(key, "ProxyServer")?;
     let proxy_override = reg_read_string(key, "ProxyOverride")?;
     let auto_config_url = reg_read_string(key, "AutoConfigURL")?;
-    unsafe { let _ = RegCloseKey(key); };
+    unsafe {
+        let _ = RegCloseKey(key);
+    };
 
     let mut config = ProxyConfig::default();
     config.proxy.enable = proxy_enable != 0;
