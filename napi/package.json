@@ -36,23 +36,10 @@
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
-    "artifacts": "napi artifacts",
-    "prepublishOnly": "napi prepublish -t npm"
+    "artifacts": "napi artifacts"
   },
   "devDependencies": {
     "@napi-rs/cli": "^3"
-  },
-  "optionalDependencies": {
-    "@uruhalushia/sysproxy-darwin-arm64": "0.1.0",
-    "@uruhalushia/sysproxy-darwin-x64": "0.1.0",
-    "@uruhalushia/sysproxy-linux-arm64-gnu": "0.1.0",
-    "@uruhalushia/sysproxy-linux-arm64-musl": "0.1.0",
-    "@uruhalushia/sysproxy-linux-riscv64-gnu": "0.1.0",
-    "@uruhalushia/sysproxy-linux-x64-gnu": "0.1.0",
-    "@uruhalushia/sysproxy-linux-x64-musl": "0.1.0",
-    "@uruhalushia/sysproxy-win32-arm64-msvc": "0.1.0",
-    "@uruhalushia/sysproxy-win32-ia32-msvc": "0.1.0",
-    "@uruhalushia/sysproxy-win32-x64-msvc": "0.1.0"
   },
   "publishConfig": {
     "access": "public"

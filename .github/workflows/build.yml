@@ -130,7 +130,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: node-${{ matrix.target }}
-          path: napi/*.node
+          path: |
+            napi/*.node
+            napi/index.js
+            napi/index.d.ts
 
   pre-release:
     needs: [build, build-node]
@@ -219,10 +222,6 @@ jobs:
           VERSION="${VERSION#v}"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
-      - name: Create npm platform packages
-        run: npx napi create-npm-dirs
-        working-directory: napi
-
       - name: Download node artifacts
         uses: actions/download-artifact@v8
         with:
@@ -230,12 +229,38 @@ jobs:
           path: napi/artifacts
           merge-multiple: true
 
-      - name: Collect node artifacts
-        run: npx napi artifacts --output-dir artifacts
+      - name: Copy npm package artifacts
+        shell: bash
+        working-directory: napi
+        run: |
+          cp artifacts/*.node .
+          cp artifacts/index.js .
+          cp artifacts/index.d.ts .
+
+      - name: Verify native artifacts
+        shell: bash
+        working-directory: napi
+        run: |
+          for target in \
+            linux-x64-gnu \
+            linux-arm64-gnu \
+            linux-x64-musl \
+            linux-arm64-musl \
+            linux-riscv64-gnu \
+            darwin-x64 \
+            darwin-arm64 \
+            win32-x64-msvc \
+            win32-ia32-msvc \
+            win32-arm64-msvc; do
+            test -f "sysproxy.${target}.node"
+          done
+          test -f index.js
+          test -f index.d.ts
+
+      - name: Verify npm package contents
+        run: npm pack --dry-run
         working-directory: napi
 
-      - name: Publish npm packages
-        run: |
-          npx napi prepublish -t npm
-          npm publish --ignore-scripts
+      - name: Publish npm package
+        run: npm publish --ignore-scripts
         working-directory: napi
