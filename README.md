@@ -157,7 +157,7 @@ fn main() -> anyhow::Result<()> {
 
 ## Node.js 绑定
 
-`napi/` 目录提供通过 [napi-rs](https://napi.rs) 构建的原生 Node.js 绑定。
+`napi/` 目录提供通过 [napi-rs](https://napi.rs) 构建的原生 Node.js 绑定。npm 包使用说明见 [`napi/README.md`](napi/README.md)。
 
 ### 构建
 
@@ -175,7 +175,9 @@ const {
   setProxy,
   setPac,
   disableProxy,
-} = require('./sysproxy.node')
+  waitProxySettingsChange,
+  ProxyGuard,
+} = require('./napi')
 
 // 查询当前代理设置
 const cfg = queryProxySettings()
@@ -194,6 +196,14 @@ setPac({ pacUrl: 'http://127.0.0.1:10000/pac' })
 
 // 取消代理
 disableProxy()
+
+// 阻塞等待一次代理设置变更
+waitProxySettingsChange()
+
+// 在 Rust 后台线程中守护代理设置，不在 JS 层循环恢复
+const guard = new ProxyGuard({ proxy: '127.0.0.1:7890' })
+guard.start()
+// guard.stop()
 ```
 
 ### 可用函数
@@ -204,6 +214,8 @@ disableProxy()
 | `setProxy(options?)` | 设置 HTTP/HTTPS/SOCKS 代理 |
 | `setPac(options?)` | 设置 PAC 自动代理 |
 | `disableProxy(options?)` | 取消代理设置 |
+| `waitProxySettingsChange(options?)` | 阻塞等待一次系统代理设置变更 |
+| `new ProxyGuard(options?)` | 创建 Rust 层代理守护实例，调用 `start()` / `stop()` 控制 |
 
 `options` 字段说明：
 

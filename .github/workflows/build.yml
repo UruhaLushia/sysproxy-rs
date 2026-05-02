@@ -251,6 +251,7 @@ jobs:
           done
           test -f index.js
           test -f index.d.ts
+          test -f README.md
 
       - name: Verify npm package contents
         run: npm pack --dry-run

@@ -5,7 +5,8 @@ use std::time::Instant;
 use anyhow::{anyhow, Result};
 
 use sysproxy::{
-    default_concurrent, disable_proxy, query_proxy_settings, set_pac, set_proxy,
+    apply_guard_proxy_settings, default_concurrent, disable_proxy,
+    guard_proxy_settings_after_apply, query_proxy_settings, set_pac, set_proxy,
     wait_proxy_settings_change, Options,
 };
 
@@ -168,16 +169,6 @@ fn main() -> Result<()> {
 
         Commands::Guard { server, bypass, url } => {
             let opt = opts!(proxy: server.clone(), bypass: bypass.clone(), pac_url: url.clone());
-            let watch_opt = opts!();
-
-            let apply: Box<dyn Fn() -> Result<()>> = if !url.is_empty() {
-                Box::new(|| set_pac(Some(&opt)))
-            } else {
-                Box::new(|| set_proxy(Some(&opt)))
-            };
-
-            apply()?;
-            println!("代理已设置，开始守护...");
 
             let cancel = Arc::new(AtomicBool::new(false));
             let cancel_clone = Arc::clone(&cancel);
@@ -186,21 +177,12 @@ fn main() -> Result<()> {
             })
             .ok();
 
-            loop {
-                match wait_proxy_settings_change(Arc::clone(&cancel), Some(&watch_opt)) {
-                    Ok(()) => {
-                        println!("检测到代理设置变更，正在恢复...");
-                        match apply() {
-                            Ok(()) => println!("代理设置已恢复"),
-                            Err(e) => eprintln!("恢复代理设置失败：{}", e),
-                        }
-                    }
-                    Err(e) if e.to_string().contains("cancelled") => break,
-                    Err(e) => {
-                        eprintln!("监听代理设置失败：{}", e);
-                        break;
-                    }
-                }
+            apply_guard_proxy_settings(Some(&opt))?;
+            println!("代理已设置，开始守护...");
+            match guard_proxy_settings_after_apply(cancel, Some(&opt)) {
+                Ok(()) => {}
+                Err(e) if e.to_string().contains("cancelled") => {}
+                Err(e) => eprintln!("守护代理设置失败：{}", e),
             }
         }
     }

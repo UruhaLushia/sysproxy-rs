@@ -29,3 +29,11 @@ export function queryProxySettings(options?: Options): ProxyConfig
 export function setProxy(options?: Options): void
 export function setPac(options?: Options): void
 export function disableProxy(options?: Options): void
+export function waitProxySettingsChange(options?: Options): void
+
+export class ProxyGuard {
+  constructor(options?: Options)
+  start(): void
+  stop(): void
+  isRunning(): boolean
+}

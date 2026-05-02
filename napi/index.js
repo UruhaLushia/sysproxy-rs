@@ -69,3 +69,5 @@ module.exports.queryProxySettings = nativeBinding.queryProxySettings
 module.exports.setProxy = nativeBinding.setProxy
 module.exports.setPac = nativeBinding.setPac
 module.exports.disableProxy = nativeBinding.disableProxy
+module.exports.waitProxySettingsChange = nativeBinding.waitProxySettingsChange
+module.exports.ProxyGuard = nativeBinding.ProxyGuard

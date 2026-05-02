@@ -2,10 +2,15 @@
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread::JoinHandle;
 
 use sysproxy::{
-    disable_proxy as _disable_proxy, query_proxy_settings as _query_proxy_settings,
-    set_pac as _set_pac, set_proxy as _set_proxy, Options,
+    apply_guard_proxy_settings as _apply_guard_proxy_settings, disable_proxy as _disable_proxy,
+    guard_proxy_settings_after_apply as _guard_proxy_settings_after_apply,
+    query_proxy_settings as _query_proxy_settings, set_pac as _set_pac, set_proxy as _set_proxy,
+    wait_proxy_settings_change as _wait_proxy_settings_change, Options,
 };
 
 // ── 暴露给 JS 的类型 ──────────────────────────────────────────────────────────
@@ -33,7 +38,7 @@ pub struct JsOptions {
 pub struct JsProxyInfo {
     pub enable: bool,
     pub same_for_all: bool,
-    /// JSON 序列化的 servers map（key: 协议名, value: host:port）
+    /// JSON 序列化的 servers map（key: 协议名，value: host:port）
     pub servers: String,
     pub bypass: String,
 }
@@ -72,6 +77,19 @@ fn to_options(js: Option<JsOptions>) -> Options {
 
 fn map_err(e: anyhow::Error) -> napi::Error {
     napi::Error::from_reason(e.to_string())
+}
+
+fn is_cancelled_error(e: &anyhow::Error) -> bool {
+    e.to_string().contains("cancelled")
+}
+
+fn join_guard_handle(handle: JoinHandle<anyhow::Result<()>>) -> Result<()> {
+    match handle.join() {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) if is_cancelled_error(&e) => Ok(()),
+        Ok(Err(e)) => Err(map_err(e)),
+        Err(_) => Err(napi::Error::from_reason("proxy guard thread panicked")),
+    }
 }
 
 // ── 导出函数 ──────────────────────────────────────────────────────────────────
@@ -114,4 +132,107 @@ pub fn set_pac(options: Option<JsOptions>) -> Result<()> {
 pub fn disable_proxy(options: Option<JsOptions>) -> Result<()> {
     let opt = to_options(options);
     _disable_proxy(Some(&opt)).map_err(map_err)
+}
+
+/// 阻塞等待一次系统代理设置变更
+#[napi]
+pub fn wait_proxy_settings_change(options: Option<JsOptions>) -> Result<()> {
+    let opt = to_options(options);
+    let cancel = Arc::new(AtomicBool::new(false));
+    _wait_proxy_settings_change(cancel, Some(&opt)).map_err(map_err)
+}
+
+/// 在 Rust 后台线程中守护代理设置
+#[napi]
+pub struct ProxyGuard {
+    options: Options,
+    cancel: Option<Arc<AtomicBool>>,
+    handle: Option<JoinHandle<anyhow::Result<()>>>,
+}
+
+#[napi]
+impl ProxyGuard {
+    #[napi(constructor)]
+    pub fn new(options: Option<JsOptions>) -> Self {
+        Self {
+            options: to_options(options),
+            cancel: None,
+            handle: None,
+        }
+    }
+
+    /// 应用代理设置并启动后台守护线程
+    #[napi]
+    pub fn start(&mut self) -> Result<()> {
+        if let Some(handle) = self.handle.as_ref() {
+            if !handle.is_finished() {
+                return Err(napi::Error::from_reason("proxy guard is already running"));
+            }
+        }
+
+        if let Some(handle) = self.handle.take() {
+            join_guard_handle(handle)?;
+        }
+        self.cancel = None;
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let thread_cancel = Arc::clone(&cancel);
+        let options = self.options.clone();
+        let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
+
+        let handle = std::thread::spawn(move || {
+            let apply_result = _apply_guard_proxy_settings(Some(&options));
+            let _ = ready_tx.send(apply_result.as_ref().map(|_| ()).map_err(|e| e.to_string()));
+            apply_result?;
+            _guard_proxy_settings_after_apply(thread_cancel, Some(&options))
+        });
+
+        match ready_rx.recv() {
+            Ok(Ok(())) => {
+                self.cancel = Some(cancel);
+                self.handle = Some(handle);
+                Ok(())
+            }
+            Ok(Err(msg)) => {
+                let _ = handle.join();
+                Err(napi::Error::from_reason(msg))
+            }
+            Err(_) => {
+                let _ = handle.join();
+                Err(napi::Error::from_reason("proxy guard failed to start"))
+            }
+        }
+    }
+
+    /// 停止后台守护线程
+    #[napi]
+    pub fn stop(&mut self) -> Result<()> {
+        if let Some(cancel) = self.cancel.take() {
+            cancel.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = self.handle.take() {
+            join_guard_handle(handle)?;
+        }
+        Ok(())
+    }
+
+    /// 当前守护线程是否仍在运行
+    #[napi]
+    pub fn is_running(&self) -> bool {
+        self.handle
+            .as_ref()
+            .map(|handle| !handle.is_finished())
+            .unwrap_or(false)
+    }
+}
+
+impl Drop for ProxyGuard {
+    fn drop(&mut self) {
+        if let Some(cancel) = self.cancel.take() {
+            cancel.store(true, Ordering::SeqCst);
+        }
+        if let Some(handle) = self.handle.take() {
+            let _ = handle.join();
+        }
+    }
 }

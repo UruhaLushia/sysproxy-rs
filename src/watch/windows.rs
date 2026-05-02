@@ -100,7 +100,10 @@ pub fn wait_proxy_settings_change(
 }
 
 fn validate_registry_target(opt: Option<&Options>) -> Result<()> {
-    if opt.map(|o| !o.device.is_empty()).unwrap_or(false) {
+    if opt
+        .map(|o| o.use_registry && !o.device.is_empty())
+        .unwrap_or(false)
+    {
         return Err(anyhow!("注册表模式不支持指定网络设备"));
     }
     Ok(())
