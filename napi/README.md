@@ -2,6 +2,10 @@
 
 Cross-platform system proxy settings for Node.js, backed by native Rust bindings.
 
+The main package loads a platform-specific optional native package at runtime,
+so package managers only need to install the binary package matching the current
+OS, CPU, and libc.
+
 ## Install
 
 ```bash

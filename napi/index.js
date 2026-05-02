@@ -2,9 +2,16 @@
 /* eslint-disable */
 // @ts-nocheck
 
-const { existsSync } = require('fs')
-const { join } = require('path')
+import { existsSync } from 'fs'
+import { join } from 'path'
+import { createRequire } from 'module'
+import packageJson from './package.json' with { type: 'json' }
 
+const require = createRequire(import.meta.url)
+const __dirname = new URL('.', import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')
+
+const packageName = '@uruhalushia/sysproxy'
+const packageVersion = packageJson.version
 const loadErrors = []
 
 function isMusl() {
@@ -29,6 +36,31 @@ function requireLocal(tuple) {
   }
 }
 
+function requirePackage(tuple) {
+  const nativePackage = `${packageName}-${tuple}`
+  try {
+    const binding = require(nativePackage)
+    const bindingPackageVersion = require(`${nativePackage}/package.json`).version
+    if (
+      bindingPackageVersion !== packageVersion &&
+      process.env.NAPI_RS_ENFORCE_VERSION_CHECK &&
+      process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0'
+    ) {
+      throw new Error(
+        `Native binding package version mismatch, expected ${packageVersion} but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`,
+      )
+    }
+    return binding
+  } catch (err) {
+    loadErrors.push(err)
+    return null
+  }
+}
+
+function requireBinding(tuple) {
+  return requireLocal(tuple) || requirePackage(tuple)
+}
+
 function requireNative() {
   if (process.env.NAPI_RS_NATIVE_LIBRARY_PATH) {
     try {
@@ -39,17 +71,17 @@ function requireNative() {
   }
 
   if (process.platform === 'win32') {
-    if (process.arch === 'x64') return requireLocal('win32-x64-msvc')
-    if (process.arch === 'ia32') return requireLocal('win32-ia32-msvc')
-    if (process.arch === 'arm64') return requireLocal('win32-arm64-msvc')
+    if (process.arch === 'x64') return requireBinding('win32-x64-msvc')
+    if (process.arch === 'ia32') return requireBinding('win32-ia32-msvc')
+    if (process.arch === 'arm64') return requireBinding('win32-arm64-msvc')
   } else if (process.platform === 'darwin') {
-    if (process.arch === 'x64') return requireLocal('darwin-x64')
-    if (process.arch === 'arm64') return requireLocal('darwin-arm64')
+    if (process.arch === 'x64') return requireBinding('darwin-x64')
+    if (process.arch === 'arm64') return requireBinding('darwin-arm64')
   } else if (process.platform === 'linux') {
     const musl = isMusl()
-    if (process.arch === 'x64') return requireLocal(musl ? 'linux-x64-musl' : 'linux-x64-gnu')
-    if (process.arch === 'arm64') return requireLocal(musl ? 'linux-arm64-musl' : 'linux-arm64-gnu')
-    if (process.arch === 'riscv64' && !musl) return requireLocal('linux-riscv64-gnu')
+    if (process.arch === 'x64') return requireBinding(musl ? 'linux-x64-musl' : 'linux-x64-gnu')
+    if (process.arch === 'arm64') return requireBinding(musl ? 'linux-arm64-musl' : 'linux-arm64-gnu')
+    if (process.arch === 'riscv64' && !musl) return requireBinding('linux-riscv64-gnu')
   }
 
   loadErrors.push(new Error(`Unsupported OS or architecture: ${process.platform} ${process.arch}`))
@@ -64,10 +96,10 @@ if (!nativeBinding) {
   throw error
 }
 
-module.exports = nativeBinding
-module.exports.queryProxySettings = nativeBinding.queryProxySettings
-module.exports.setProxy = nativeBinding.setProxy
-module.exports.setPac = nativeBinding.setPac
-module.exports.disableProxy = nativeBinding.disableProxy
-module.exports.waitProxySettingsChange = nativeBinding.waitProxySettingsChange
-module.exports.ProxyGuard = nativeBinding.ProxyGuard
+export default nativeBinding
+export const queryProxySettings = nativeBinding.queryProxySettings
+export const setProxy = nativeBinding.setProxy
+export const setPac = nativeBinding.setPac
+export const disableProxy = nativeBinding.disableProxy
+export const waitProxySettingsChange = nativeBinding.waitProxySettingsChange
+export const ProxyGuard = nativeBinding.ProxyGuard

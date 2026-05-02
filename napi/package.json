@@ -1,7 +1,8 @@
 {
   "name": "@uruhalushia/sysproxy",
-  "version": "0.1.0",
+  "version": "0.2.4",
   "description": "跨平台系统代理设置工具 Node.js 原生绑定",
+  "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
   "repository": {
@@ -16,8 +17,7 @@
   "files": [
     "index.js",
     "index.d.ts",
-    "README.md",
-    "*.node"
+    "README.md"
   ],
   "napi": {
     "binaryName": "sysproxy",
@@ -37,6 +37,7 @@
   "scripts": {
     "build": "napi build --platform --release",
     "build:debug": "napi build --platform",
+    "create-npm-dirs": "napi create-npm-dirs",
     "artifacts": "napi artifacts"
   },
   "devDependencies": {

@@ -208,6 +208,10 @@ jobs:
           node --version
           npm --version
 
+      - name: Install npm dependencies
+        run: npm ci
+        working-directory: napi
+
       - name: Set npm package version
         shell: bash
         working-directory: napi
@@ -220,6 +224,10 @@ jobs:
           VERSION="${VERSION#v}"
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
+      - name: Create platform npm package dirs
+        run: npm run create-npm-dirs
+        working-directory: napi
+
       - name: Download node artifacts
         uses: actions/download-artifact@v8
         with:
@@ -227,10 +235,9 @@ jobs:
           path: napi/artifacts
           merge-multiple: true
 
-      - name: Copy npm package artifacts
-        shell: bash
+      - name: Copy native artifacts into platform packages
         working-directory: napi
-        run: cp artifacts/*.node .
+        run: npm run artifacts
 
       - name: Verify native artifacts
         shell: bash
@@ -247,16 +254,36 @@ jobs:
             win32-x64-msvc \
             win32-ia32-msvc \
             win32-arm64-msvc; do
-            test -f "sysproxy.${target}.node"
+            test -f "npm/${target}/sysproxy.${target}.node"
+            test -f "npm/${target}/package.json"
           done
           test -f index.js
           test -f index.d.ts
           test -f README.md
 
+      - name: Publish platform npm packages
+        run: npx napi pre-publish --tag-style npm --no-gh-release
+        working-directory: napi
+
       - name: Verify npm package contents
-        run: npm pack --dry-run
+        shell: bash
+        run: |
+          npm pack --dry-run --json > pack.json
+          node - <<'NODE'
+          const fs = require('node:fs')
+          const [{ files }] = JSON.parse(fs.readFileSync('pack.json', 'utf8'))
+          const names = files.map((file) => file.path)
+          if (names.some((name) => name.endsWith('.node'))) {
+            throw new Error(`Main npm package must not include native binaries: ${names.join(', ')}`)
+          }
+          for (const required of ['index.js', 'index.d.ts', 'README.md', 'package.json']) {
+            if (!names.includes(required)) {
+              throw new Error(`Missing ${required} from main npm package`)
+            }
+          }
+          NODE
         working-directory: napi
 
       - name: Publish npm package
-        run: npm publish --ignore-scripts
+        run: npm publish --ignore-scripts --access public
         working-directory: napi
