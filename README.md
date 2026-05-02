@@ -66,6 +66,95 @@ sysproxy watch
 sysproxy guard -s 127.0.0.1:7890
 ```
 
+## 作为 Rust 库使用
+
+`sysproxy` 同时导出 Rust 库 API，可在其他 Rust 项目中直接查询、设置和监听系统代理。
+
+### 引入依赖
+
+```toml
+[dependencies]
+anyhow = "1"
+sysproxy = { git = "https://github.com/UruhaLushia/sysproxy-rs.git" }
+```
+
+如果在同一个 workspace 或本地调试，也可以使用路径依赖：
+
+```toml
+[dependencies]
+anyhow = "1"
+sysproxy = { path = "../sysproxy-rs" }
+```
+
+### 基础用法
+
+```rust
+use sysproxy::{disable_proxy, query_proxy_settings, set_pac, set_proxy, Options};
+
+fn main() -> anyhow::Result<()> {
+    // 查询当前系统代理设置
+    let cfg = query_proxy_settings(None)?;
+    println!("proxy enabled: {}", cfg.proxy.enable);
+    println!("pac enabled: {}", cfg.pac.enable);
+
+    // 设置 HTTP/HTTPS/SOCKS 代理
+    let opt = Options {
+        proxy: "127.0.0.1:7890".to_string(),
+        bypass: "localhost,127.0.0.0/8".to_string(),
+        ..Default::default()
+    };
+    set_proxy(Some(&opt))?;
+
+    // 设置 PAC 代理
+    let pac_opt = Options {
+        pac_url: "http://127.0.0.1:10000/pac".to_string(),
+        ..Default::default()
+    };
+    set_pac(Some(&pac_opt))?;
+
+    // 取消代理
+    disable_proxy(None)?;
+
+    Ok(())
+}
+```
+
+### 监听代理变更
+
+```rust
+use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
+
+use sysproxy::wait_proxy_settings_change;
+
+fn main() -> anyhow::Result<()> {
+    let cancel = Arc::new(AtomicBool::new(false));
+
+    loop {
+        match wait_proxy_settings_change(Arc::clone(&cancel), None) {
+            Ok(()) => println!("proxy settings changed"),
+            Err(e) if e.to_string().contains("cancelled") => break,
+            Err(e) => return Err(e),
+        }
+    }
+
+    Ok(())
+}
+```
+
+### `Options` 字段
+
+| 字段 | 说明 |
+|------|------|
+| `proxy` | 代理服务器地址，格式 `host:port` |
+| `bypass` | 绕过地址，逗号分隔 |
+| `pac_url` | PAC 脚本 URL |
+| `device` | 指定网络设备 / 连接名称 |
+| `only_active_device` | 仅对活跃网络设备生效 |
+| `concurrent` | 是否并发执行；`None` 表示使用平台默认值 |
+| `use_registry` | Windows 使用注册表设置 / 查询代理 |
+| `peer_pid` / `peer_uid` / `peer_gid` / `environment` | Linux 调用方会话上下文；服务进程代用户设置代理时使用 |
+
 ## Node.js 绑定
 
 `napi/` 目录提供通过 [napi-rs](https://napi.rs) 构建的原生 Node.js 绑定。
