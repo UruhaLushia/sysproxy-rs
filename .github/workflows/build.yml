@@ -200,18 +200,13 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 24
           registry-url: https://registry.npmjs.org
 
-      - name: Update npm
-        run: npm install -g npm@latest
-
       - name: Print npm version
-        run: npm --version
-
-      - name: Install npm dependencies
-        run: npm install
-        working-directory: napi
+        run: |
+          node --version
+          npm --version
 
       - name: Set npm package version
         shell: bash
