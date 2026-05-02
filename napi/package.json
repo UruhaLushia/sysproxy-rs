@@ -6,7 +6,7 @@
   "types": "index.d.ts",
   "repository": {
     "type": "git",
-    "url": "https://github.com/UruhaLushia/sysproxy-rs.git"
+    "url": "git+https://github.com/UruhaLushia/sysproxy-rs.git"
   },
   "homepage": "https://github.com/UruhaLushia/sysproxy-rs",
   "bugs": {
@@ -23,6 +23,9 @@
     "targets": [
       "x86_64-unknown-linux-gnu",
       "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-unknown-linux-musl",
+      "riscv64gc-unknown-linux-gnu",
       "x86_64-apple-darwin",
       "aarch64-apple-darwin",
       "x86_64-pc-windows-msvc",
@@ -38,5 +41,20 @@
   },
   "devDependencies": {
     "@napi-rs/cli": "^3"
+  },
+  "optionalDependencies": {
+    "@uruhalushia/sysproxy-darwin-arm64": "0.1.0",
+    "@uruhalushia/sysproxy-darwin-x64": "0.1.0",
+    "@uruhalushia/sysproxy-linux-arm64-gnu": "0.1.0",
+    "@uruhalushia/sysproxy-linux-arm64-musl": "0.1.0",
+    "@uruhalushia/sysproxy-linux-riscv64-gnu": "0.1.0",
+    "@uruhalushia/sysproxy-linux-x64-gnu": "0.1.0",
+    "@uruhalushia/sysproxy-linux-x64-musl": "0.1.0",
+    "@uruhalushia/sysproxy-win32-arm64-msvc": "0.1.0",
+    "@uruhalushia/sysproxy-win32-ia32-msvc": "0.1.0",
+    "@uruhalushia/sysproxy-win32-x64-msvc": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }
