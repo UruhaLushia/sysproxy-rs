@@ -130,10 +130,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: node-${{ matrix.target }}
-          path: |
-            napi/*.node
-            napi/index.js
-            napi/index.d.ts
+          path: napi/*.node
 
   pre-release:
     needs: [build, build-node]
@@ -232,10 +229,7 @@ jobs:
       - name: Copy npm package artifacts
         shell: bash
         working-directory: napi
-        run: |
-          cp artifacts/*.node .
-          cp artifacts/index.js .
-          cp artifacts/index.d.ts .
+        run: cp artifacts/*.node .
 
       - name: Verify native artifacts
         shell: bash
