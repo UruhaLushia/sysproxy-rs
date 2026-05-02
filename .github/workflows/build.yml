@@ -1,0 +1,181 @@
+name: Build
+permissions: write-all
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag version to release"
+        required: false
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+    paths-ignore:
+      - "README.md"
+      - ".github/ISSUE_TEMPLATE/**"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          # Linux GNU
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-gnu,      output: linux-amd64-gnu    }
+          - { os: ubuntu-latest, target: i686-unknown-linux-gnu,        output: linux-386-gnu      }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-gnu,     output: linux-arm64-gnu    }
+          - { os: ubuntu-latest, target: riscv64gc-unknown-linux-gnu,   output: linux-riscv64-gnu  }
+
+          # Linux musl (static)
+          - { os: ubuntu-latest, target: x86_64-unknown-linux-musl,     output: linux-amd64-musl   }
+          - { os: ubuntu-latest, target: i686-unknown-linux-musl,       output: linux-386-musl     }
+          - { os: ubuntu-latest, target: aarch64-unknown-linux-musl,    output: linux-arm64-musl   }
+
+          # macOS — native runner, add both targets for universal coverage
+          - { os: macos-latest, target: x86_64-apple-darwin,            output: darwin-amd64   }
+          - { os: macos-latest, target: aarch64-apple-darwin,           output: darwin-arm64   }
+
+          # Windows — native MSVC runner (required for the `windows` crate)
+          - { os: windows-latest, target: x86_64-pc-windows-msvc,      output: windows-amd64  }
+          - { os: windows-latest, target: i686-pc-windows-msvc,        output: windows-386    }
+          - { os: windows-latest, target: aarch64-pc-windows-msvc,     output: windows-arm64  }
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross (Linux)
+        if: runner.os == 'Linux'
+        uses: taiki-e/install-action@cross
+
+      - name: Build (Linux)
+        if: runner.os == 'Linux'
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (macOS / Windows)
+        if: runner.os != 'Linux'
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: cp target/${{ matrix.target }}/release/sysproxy sysproxy-${{ matrix.output }}
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Copy-Item target/${{ matrix.target }}/release/sysproxy.exe sysproxy-${{ matrix.output }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.output }}
+          path: sysproxy-${{ matrix.output }}*
+
+  build-node:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - { os: ubuntu-latest,  target: x86_64-unknown-linux-gnu                                          }
+          - { os: ubuntu-latest,  target: aarch64-unknown-linux-gnu, cross-linker: aarch64-linux-gnu-gcc    }
+          - { os: macos-latest,   target: x86_64-apple-darwin                                               }
+          - { os: macos-latest,   target: aarch64-apple-darwin                                              }
+          - { os: windows-latest, target: x86_64-pc-windows-msvc                                           }
+          - { os: windows-latest, target: i686-pc-windows-msvc                                             }
+          - { os: windows-latest, target: aarch64-pc-windows-msvc                                          }
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install GCC cross-compiler
+        if: matrix.cross-linker != ''
+        run: sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Install napi-rs CLI
+        run: npm install -g @napi-rs/cli
+
+      - name: Install npm dependencies
+        run: npm install
+        working-directory: napi
+
+      - name: Build .node
+        run: napi build --platform --release --target ${{ matrix.target }}
+        working-directory: napi
+        env:
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: ${{ matrix.cross-linker }}
+
+      - name: Upload .node artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: node-${{ matrix.target }}
+          path: napi/*.node
+
+  pre-release:
+    needs: [build, build-node]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: bin/
+          merge-multiple: true
+
+      - name: Delete current release assets
+        uses: 8Mi-Tech/delete-release-assets-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: pre-release
+          deleteOnlyFromDrafts: false
+
+      - name: Tag Repo
+        uses: richardsimko/update-tag@v1
+        with:
+          tag_name: pre-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish Prerelease
+        uses: softprops/action-gh-release@v3
+        if: success()
+        with:
+          tag_name: pre-release
+          files: bin/*
+          prerelease: true
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && github.event.inputs.version != '')
+    needs: [build, build-node]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: bin/
+          merge-multiple: true
+
+      - name: Delete current release assets
+        uses: 8Mi-Tech/delete-release-assets-action@main
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          tag: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref }}
+          deleteOnlyFromDrafts: false
+
+      - name: Publish Release
+        if: success()
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.event.inputs.version != '' && github.event.inputs.version || github.ref }}
+          files: bin/*

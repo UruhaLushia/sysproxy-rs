@@ -1,0 +1,14 @@
+# Build output
+target/
+node_modules/
+
+# Editor
+.idea/
+.vscode/
+.fleet/
+
+# macOS
+.DS_Store
+
+# Log files
+*.log

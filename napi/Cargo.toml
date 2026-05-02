@@ -1,0 +1,20 @@
+[package]
+name = "sysproxy-napi"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-only"
+repository = "https://github.com/UruhaLushia/sysproxy-rs"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+napi = { version = "2", features = ["napi4"] }
+napi-derive = "2"
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sysproxy = { path = ".." }
+
+[build-dependencies]
+napi-build = "2"

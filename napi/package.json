@@ -1,0 +1,42 @@
+{
+  "name": "@uruhalushia/sysproxy",
+  "version": "0.1.0",
+  "description": "跨平台系统代理设置工具 Node.js 原生绑定",
+  "main": "index.js",
+  "types": "index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UruhaLushia/sysproxy-rs.git"
+  },
+  "homepage": "https://github.com/UruhaLushia/sysproxy-rs",
+  "bugs": {
+    "url": "https://github.com/UruhaLushia/sysproxy-rs/issues"
+  },
+  "license": "GPL-3.0-only",
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "*.node"
+  ],
+  "napi": {
+    "binaryName": "sysproxy",
+    "targets": [
+      "x86_64-unknown-linux-gnu",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-apple-darwin",
+      "aarch64-apple-darwin",
+      "x86_64-pc-windows-msvc",
+      "i686-pc-windows-msvc",
+      "aarch64-pc-windows-msvc"
+    ]
+  },
+  "scripts": {
+    "build": "napi build --platform --release",
+    "build:debug": "napi build --platform",
+    "artifacts": "napi artifacts",
+    "prepublishOnly": "napi prepublish -t npm"
+  },
+  "devDependencies": {
+    "@napi-rs/cli": "^3"
+  }
+}
