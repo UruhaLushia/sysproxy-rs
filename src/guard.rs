@@ -18,6 +18,31 @@ enum GuardMode {
     Pac,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum GuardEvent {
+    Changed,
+    Restored,
+    RestoreFailed,
+}
+
+impl GuardEvent {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GuardEvent::Changed => "changed",
+            GuardEvent::Restored => "restored",
+            GuardEvent::RestoreFailed => "restore_failed",
+        }
+    }
+
+    pub fn message(self) -> &'static str {
+        match self {
+            GuardEvent::Changed => "检测到代理设置变更，正在恢复...",
+            GuardEvent::Restored => "代理设置已恢复",
+            GuardEvent::RestoreFailed => "代理设置恢复失败",
+        }
+    }
+}
+
 const GUARD_WATCH_RECHECK_INTERVAL: Duration = Duration::from_secs(2);
 
 pub fn apply_guard_proxy_settings(opt: Option<&Options>) -> Result<()> {
@@ -136,15 +161,25 @@ fn ensure_guard_proxy_settings(
     expected: &ProxyConfig,
     apply_opt: Option<&Options>,
     query_opt: Option<&Options>,
+    on_event: Option<&dyn Fn(GuardEvent)>,
 ) -> Result<()> {
     let should_restore = match query_proxy_settings(query_opt) {
         Ok(current) => !proxy_matches_expected(mode, apply_opt, expected, &current),
         Err(_) => true,
     };
     if should_restore {
-        eprintln!("检测到代理设置变更，正在恢复...");
-        apply_guard_proxy_settings(apply_opt)?;
-        eprintln!("代理设置已恢复");
+        if let Some(on_event) = on_event {
+            on_event(GuardEvent::Changed);
+        }
+        if let Err(e) = apply_guard_proxy_settings(apply_opt) {
+            if let Some(on_event) = on_event {
+                on_event(GuardEvent::RestoreFailed);
+            }
+            return Err(e);
+        }
+        if let Some(on_event) = on_event {
+            on_event(GuardEvent::Restored);
+        }
     }
     Ok(())
 }
@@ -201,6 +236,14 @@ pub fn guard_proxy_settings_after_apply(
     cancel: Arc<AtomicBool>,
     opt: Option<&Options>,
 ) -> Result<()> {
+    guard_proxy_settings_after_apply_with_events(cancel, opt, |_| {})
+}
+
+pub fn guard_proxy_settings_after_apply_with_events(
+    cancel: Arc<AtomicBool>,
+    opt: Option<&Options>,
+    on_event: impl Fn(GuardEvent),
+) -> Result<()> {
     let watch_opt = opt.map(|o| Options {
         device: o.device.clone(),
         only_active_device: o.only_active_device,
@@ -226,6 +269,7 @@ pub fn guard_proxy_settings_after_apply(
             &expected,
             apply_opt.as_ref().or(opt),
             watch_opt.as_ref(),
+            Some(&on_event),
         )?;
         wait_guard_proxy_settings_change(Arc::clone(&cancel), watch_opt.as_ref())?;
     }

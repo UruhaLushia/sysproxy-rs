@@ -6,7 +6,7 @@ use anyhow::{Result, anyhow};
 
 use sysproxy::{
     Options, apply_guard_proxy_settings, default_concurrent, disable_proxy,
-    guard_proxy_settings_after_apply, query_proxy_settings, set_pac, set_proxy,
+    guard_proxy_settings_after_apply_with_events, query_proxy_settings, set_pac, set_proxy,
     wait_proxy_settings_change,
 };
 
@@ -212,7 +212,9 @@ fn main() -> Result<()> {
 
             apply_guard_proxy_settings(Some(&opt))?;
             println!("代理已设置，开始守护...");
-            match guard_proxy_settings_after_apply(cancel, Some(&opt)) {
+            match guard_proxy_settings_after_apply_with_events(cancel, Some(&opt), |event| {
+                eprintln!("{}", event.message());
+            }) {
                 Ok(()) => {}
                 Err(e) if e.to_string().contains("cancelled") => {}
                 Err(e) => eprintln!("守护代理设置失败：{}", e),

@@ -393,7 +393,7 @@ dependencies = [
 
 [[package]]
 name = "sysproxy"
-version = "0.2.4"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "ctrlc",
@@ -407,7 +407,7 @@ dependencies = [
 
 [[package]]
 name = "sysproxy-napi"
-version = "0.2.4"
+version = "0.2.6"
 dependencies = [
  "anyhow",
  "napi",

@@ -1,15 +1,18 @@
 #![deny(clippy::all)]
 
 use napi::bindgen_prelude::*;
+use napi::threadsafe_function::{
+    ErrorStrategy, ThreadSafeCallContext, ThreadsafeFunction, ThreadsafeFunctionCallMode,
+};
 use napi_derive::napi;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::JoinHandle;
 
 use sysproxy::{
-    Options, apply_guard_proxy_settings as _apply_guard_proxy_settings,
+    GuardEvent, Options, apply_guard_proxy_settings as _apply_guard_proxy_settings,
     disable_proxy as _disable_proxy,
-    guard_proxy_settings_after_apply as _guard_proxy_settings_after_apply,
+    guard_proxy_settings_after_apply_with_events as _guard_proxy_settings_after_apply_with_events,
     query_proxy_settings as _query_proxy_settings, set_pac as _set_pac, set_proxy as _set_proxy,
     wait_proxy_settings_change as _wait_proxy_settings_change,
 };
@@ -57,6 +60,14 @@ pub struct JsProxyConfig {
     pub proxy: JsProxyInfo,
     pub pac: JsPacInfo,
 }
+
+#[napi(object)]
+pub struct JsGuardEvent {
+    pub kind: String,
+    pub message: String,
+}
+
+type GuardEventCallback = ThreadsafeFunction<GuardEvent, ErrorStrategy::Fatal>;
 
 // ── 辅助：JsOptions → Options ─────────────────────────────────────────────────
 
@@ -149,6 +160,7 @@ pub struct ProxyGuard {
     options: Options,
     cancel: Option<Arc<AtomicBool>>,
     handle: Option<JoinHandle<anyhow::Result<()>>>,
+    on_event: Option<GuardEventCallback>,
 }
 
 #[napi]
@@ -159,7 +171,23 @@ impl ProxyGuard {
             options: to_options(options),
             cancel: None,
             handle: None,
+            on_event: None,
         }
+    }
+
+    /// 设置守护事件回调。回调接收 { kind, message }。
+    #[napi]
+    pub fn on_event(&mut self, callback: JsFunction) -> Result<()> {
+        self.on_event = Some(callback.create_threadsafe_function(
+            0,
+            |ctx: ThreadSafeCallContext<GuardEvent>| {
+                Ok(vec![JsGuardEvent {
+                    kind: ctx.value.as_str().to_string(),
+                    message: ctx.value.message().to_string(),
+                }])
+            },
+        )?);
+        Ok(())
     }
 
     /// 应用代理设置并启动后台守护线程
@@ -179,13 +207,18 @@ impl ProxyGuard {
         let cancel = Arc::new(AtomicBool::new(false));
         let thread_cancel = Arc::clone(&cancel);
         let options = self.options.clone();
+        let on_event = self.on_event.clone();
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
 
         let handle = std::thread::spawn(move || {
             let apply_result = _apply_guard_proxy_settings(Some(&options));
             let _ = ready_tx.send(apply_result.as_ref().map(|_| ()).map_err(|e| e.to_string()));
             apply_result?;
-            _guard_proxy_settings_after_apply(thread_cancel, Some(&options))
+            _guard_proxy_settings_after_apply_with_events(thread_cancel, Some(&options), |event| {
+                if let Some(on_event) = on_event.as_ref() {
+                    on_event.call(event, ThreadsafeFunctionCallMode::NonBlocking);
+                }
+            })
         });
 
         match ready_rx.recv() {

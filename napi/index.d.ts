@@ -25,6 +25,11 @@ export interface ProxyConfig {
   pac: PacInfo
 }
 
+export interface GuardEvent {
+  kind: 'changed' | 'restored' | 'restore_failed'
+  message: string
+}
+
 export function queryProxySettings(options?: Options): ProxyConfig
 export function setProxy(options?: Options): void
 export function setPac(options?: Options): void
@@ -33,6 +38,7 @@ export function waitProxySettingsChange(options?: Options): void
 
 export class ProxyGuard {
   constructor(options?: Options)
+  onEvent(callback: (event: GuardEvent) => void): void
   start(): void
   stop(): void
   isRunning(): boolean

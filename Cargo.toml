@@ -11,11 +11,12 @@ panic = "abort"
 
 [package]
 name = "sysproxy"
-version = "0.2.4"
+version = "0.2.6"
 edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/UruhaLushia/sysproxy-rs"
 description = "跨平台系统代理设置工具"
+keywords = ["proxy", "system-proxy", "networksetup", "gsettings", "kioslaverc"]
 
 [[bin]]
 name = "sysproxy"

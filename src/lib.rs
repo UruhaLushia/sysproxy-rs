@@ -5,7 +5,8 @@ pub mod types;
 pub mod watch;
 
 pub use guard::{
-    apply_guard_proxy_settings, guard_proxy_settings, guard_proxy_settings_after_apply,
+    GuardEvent, apply_guard_proxy_settings, guard_proxy_settings, guard_proxy_settings_after_apply,
+    guard_proxy_settings_after_apply_with_events,
 };
 pub use options::{Options, default_concurrent, resolve_concurrent};
 pub use types::{

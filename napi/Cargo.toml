@@ -1,9 +1,10 @@
 [package]
 name = "sysproxy-napi"
-version = "0.2.4"
+version = "0.2.6"
 edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/UruhaLushia/sysproxy-rs"
+keywords = ["proxy", "system-proxy", "networksetup", "gsettings", "kioslaverc"]
 
 [lib]
 crate-type = ["cdylib"]

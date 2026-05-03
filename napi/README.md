@@ -100,6 +100,10 @@ const guard = new ProxyGuard({
   bypass: 'localhost,127.0.0.0/8',
 })
 
+guard.onEvent((event) => {
+  console.log(event.kind, event.message)
+})
+
 guard.start()
 
 process.on('SIGINT', () => {
@@ -130,6 +134,7 @@ guard.start()
 | `disableProxy(options?)` | Disable proxy |
 | `waitProxySettingsChange(options?)` | Block until one system proxy settings change |
 | `new ProxyGuard(options?)` | Create a Rust-layer proxy guard with `start()` / `stop()` |
+| `ProxyGuard#onEvent(callback)` | Receive guard events: `changed`, `restored`, `restore_failed` |
 
 ## Options
 
