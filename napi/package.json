@@ -1,6 +1,6 @@
 {
   "name": "@uruhalushia/sysproxy",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "跨平台系统代理设置工具 Node.js 原生绑定",
   "type": "module",
   "main": "index.js",
