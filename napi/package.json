@@ -5,6 +5,7 @@
   "type": "module",
   "main": "index.js",
   "types": "index.d.ts",
+  "packageManager": "pnpm@10.33.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/UruhaLushia/sysproxy-rs.git"
@@ -27,6 +28,9 @@
       "x86_64-unknown-linux-musl",
       "aarch64-unknown-linux-musl",
       "riscv64gc-unknown-linux-gnu",
+      "loongarch64-unknown-linux-gnu",
+      "riscv64gc-unknown-linux-musl",
+      "loongarch64-unknown-linux-musl",
       "x86_64-apple-darwin",
       "aarch64-apple-darwin",
       "x86_64-pc-windows-msvc",

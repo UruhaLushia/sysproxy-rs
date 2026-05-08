@@ -81,7 +81,8 @@ function requireNative() {
     const musl = isMusl()
     if (process.arch === 'x64') return requireBinding(musl ? 'linux-x64-musl' : 'linux-x64-gnu')
     if (process.arch === 'arm64') return requireBinding(musl ? 'linux-arm64-musl' : 'linux-arm64-gnu')
-    if (process.arch === 'riscv64' && !musl) return requireBinding('linux-riscv64-gnu')
+    if (process.arch === 'riscv64') return requireBinding(musl ? 'linux-riscv64-musl' : 'linux-riscv64-gnu')
+    if (process.arch === 'loong64') return requireBinding(musl ? 'linux-loong64-musl' : 'linux-loong64-gnu')
   }
 
   loadErrors.push(new Error(`Unsupported OS or architecture: ${process.platform} ${process.arch}`))

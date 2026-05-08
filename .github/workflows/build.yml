@@ -26,11 +26,14 @@ jobs:
           - { os: ubuntu-latest, target: i686-unknown-linux-gnu,        output: linux-386-gnu      }
           - { os: ubuntu-latest, target: aarch64-unknown-linux-gnu,     output: linux-arm64-gnu    }
           - { os: ubuntu-latest, target: riscv64gc-unknown-linux-gnu,   output: linux-riscv64-gnu  }
+          - { os: ubuntu-latest, target: loongarch64-unknown-linux-gnu, output: linux-loong64-gnu }
 
           # Linux musl (static)
           - { os: ubuntu-latest, target: x86_64-unknown-linux-musl,     output: linux-amd64-musl   }
           - { os: ubuntu-latest, target: i686-unknown-linux-musl,       output: linux-386-musl     }
           - { os: ubuntu-latest, target: aarch64-unknown-linux-musl,    output: linux-arm64-musl   }
+          - { os: ubuntu-latest, target: riscv64gc-unknown-linux-musl,   output: linux-riscv64-musl }
+          - { os: ubuntu-latest, target: loongarch64-unknown-linux-musl, output: linux-loong64-musl }
 
           # macOS — native runner, add both targets for universal coverage
           - { os: macos-latest, target: x86_64-apple-darwin,            output: darwin-amd64   }
@@ -44,18 +47,69 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Apply release package version
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.version, 'v'))
+        shell: bash
+        run: |
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+
+          if [ -n "$INPUT_VERSION" ]; then
+            CLEAN_VERSION="${INPUT_VERSION#v}"
+            if [[ ! "$CLEAN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid version format: $INPUT_VERSION"
+              exit 1
+            fi
+            RELEASE_VERSION="$CLEAN_VERSION"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            CLEAN_VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$CLEAN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid version format: $GITHUB_REF_NAME"
+              exit 1
+            fi
+            RELEASE_VERSION="$CLEAN_VERSION"
+          else
+            echo "Release version is required"
+            exit 1
+          fi
+
+          export RELEASE_VERSION
+          node <<'NODE'
+          const fs = require('node:fs')
+          const version = process.env.RELEASE_VERSION
+          for (const file of ['Cargo.toml', 'napi/Cargo.toml']) {
+            const text = fs.readFileSync(file, 'utf8')
+            fs.writeFileSync(file, text.replace(/^version = "([^"]+)"/m, `version = "${version}"`))
+          }
+          const file = 'napi/package.json'
+          const json = JSON.parse(fs.readFileSync(file, 'utf8'))
+          json.version = version
+          fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`)
+          NODE
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
       - name: Install cross (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !contains(matrix.target, 'loongarch64') && matrix.target != 'riscv64gc-unknown-linux-musl'
         uses: taiki-e/install-action@cross
 
-      - name: Build (Linux)
-        if: runner.os == 'Linux'
+      - name: Install Zig (Linux zig targets)
+        if: runner.os == 'Linux' && (contains(matrix.target, 'loongarch64') || matrix.target == 'riscv64gc-unknown-linux-musl')
+        uses: mlugg/setup-zig@v2
+
+      - name: Install cargo-zigbuild (Linux zig targets)
+        if: runner.os == 'Linux' && (contains(matrix.target, 'loongarch64') || matrix.target == 'riscv64gc-unknown-linux-musl')
+        uses: taiki-e/install-action@cargo-zigbuild
+
+      - name: Build (Linux cross)
+        if: runner.os == 'Linux' && !contains(matrix.target, 'loongarch64') && matrix.target != 'riscv64gc-unknown-linux-musl'
         run: cross build --release --target ${{ matrix.target }}
+
+      - name: Build (Linux zig)
+        if: runner.os == 'Linux' && (contains(matrix.target, 'loongarch64') || matrix.target == 'riscv64gc-unknown-linux-musl')
+        run: cargo zigbuild --release --target ${{ matrix.target }}
 
       - name: Build (macOS / Windows)
         if: runner.os != 'Linux'
@@ -86,6 +140,9 @@ jobs:
           - { os: ubuntu-latest,  target: x86_64-unknown-linux-musl }
           - { os: ubuntu-latest,  target: aarch64-unknown-linux-musl  }
           - { os: ubuntu-latest,  target: riscv64gc-unknown-linux-gnu }
+          - { os: ubuntu-latest,  target: loongarch64-unknown-linux-gnu }
+          - { os: ubuntu-latest,  target: riscv64gc-unknown-linux-musl }
+          - { os: ubuntu-latest,  target: loongarch64-unknown-linux-musl }
           - { os: macos-latest,   target: x86_64-apple-darwin }
           - { os: macos-latest,   target: aarch64-apple-darwin  }
           - { os: windows-latest, target: x86_64-pc-windows-msvc  }
@@ -98,7 +155,49 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 22
+          node-version: 26
+
+      - name: Enable pnpm
+        run: corepack enable pnpm
+
+      - name: Apply release package version
+        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && startsWith(github.event.inputs.version, 'v'))
+        shell: bash
+        run: |
+          INPUT_VERSION="${{ github.event.inputs.version }}"
+
+          if [ -n "$INPUT_VERSION" ]; then
+            CLEAN_VERSION="${INPUT_VERSION#v}"
+            if [[ ! "$CLEAN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid version format: $INPUT_VERSION"
+              exit 1
+            fi
+            RELEASE_VERSION="$CLEAN_VERSION"
+          elif [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            CLEAN_VERSION="${GITHUB_REF_NAME#v}"
+            if [[ ! "$CLEAN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Invalid version format: $GITHUB_REF_NAME"
+              exit 1
+            fi
+            RELEASE_VERSION="$CLEAN_VERSION"
+          else
+            echo "Release version is required"
+            exit 1
+          fi
+
+          export RELEASE_VERSION
+          node <<'NODE'
+          const fs = require('node:fs')
+          const version = process.env.RELEASE_VERSION
+          for (const file of ['Cargo.toml', 'napi/Cargo.toml']) {
+            const text = fs.readFileSync(file, 'utf8')
+            fs.writeFileSync(file, text.replace(/^version = "([^"]+)"/m, `version = "${version}"`))
+          }
+          const file = 'napi/package.json'
+          const json = JSON.parse(fs.readFileSync(file, 'utf8'))
+          json.version = version
+          fs.writeFileSync(file, `${JSON.stringify(json, null, 2)}\n`)
+          NODE
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -106,24 +205,34 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Install cross (Linux)
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && !contains(matrix.target, 'loongarch64') && matrix.target != 'riscv64gc-unknown-linux-musl'
         uses: taiki-e/install-action@cross
 
-      - name: Install napi-rs CLI
-        run: npm install -g @napi-rs/cli
+      - name: Install Zig (Linux zig targets)
+        if: runner.os == 'Linux' && (contains(matrix.target, 'loongarch64') || matrix.target == 'riscv64gc-unknown-linux-musl')
+        uses: mlugg/setup-zig@v2
+
+      - name: Install cargo-zigbuild (Linux zig targets)
+        if: runner.os == 'Linux' && (contains(matrix.target, 'loongarch64') || matrix.target == 'riscv64gc-unknown-linux-musl')
+        uses: taiki-e/install-action@cargo-zigbuild
 
       - name: Install npm dependencies
-        run: npm install
+        run: pnpm install --frozen-lockfile
         working-directory: napi
 
-      - name: Build .node (Linux)
-        if: runner.os == 'Linux'
-        run: napi build --platform --release --target ${{ matrix.target }} --use-cross
+      - name: Build .node (Linux cross)
+        if: runner.os == 'Linux' && !contains(matrix.target, 'loongarch64') && matrix.target != 'riscv64gc-unknown-linux-musl'
+        run: pnpm exec napi build --platform --release --target ${{ matrix.target }} --use-cross
+        working-directory: napi
+
+      - name: Build .node (Linux zig)
+        if: runner.os == 'Linux' && (contains(matrix.target, 'loongarch64') || matrix.target == 'riscv64gc-unknown-linux-musl')
+        run: pnpm exec napi build --platform --release --target ${{ matrix.target }} --cross-compile
         working-directory: napi
 
       - name: Build .node (macOS / Windows)
         if: runner.os != 'Linux'
-        run: napi build --platform --release --target ${{ matrix.target }}
+        run: pnpm exec napi build --platform --release --target ${{ matrix.target }}
         working-directory: napi
 
       - name: Upload .node artifact
@@ -136,6 +245,80 @@ jobs:
     needs: [build, build-node]
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v6
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Update repository version
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        shell: bash
+        run: |
+          CLEAN_VERSION="${{ github.event.inputs.version }}"
+          CLEAN_VERSION="${CLEAN_VERSION#v}"
+          if [[ ! "$CLEAN_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid version format: ${{ github.event.inputs.version }}"
+            exit 1
+          fi
+
+          export CLEAN_VERSION
+          node <<'NODE'
+          const fs = require('node:fs')
+          const version = process.env.CLEAN_VERSION
+          for (const file of ['Cargo.toml', 'napi/Cargo.toml']) {
+            const text = fs.readFileSync(file, 'utf8')
+            fs.writeFileSync(file, text.replace(/^version = "([^"]+)"/m, `version = "${version}"`))
+          }
+          const packageFile = 'napi/package.json'
+          const json = JSON.parse(fs.readFileSync(packageFile, 'utf8'))
+          json.version = version
+          fs.writeFileSync(packageFile, `${JSON.stringify(json, null, 2)}\n`)
+
+          const lockPackages = new Set(['sysproxy', 'sysproxy-napi'])
+          const lines = fs.readFileSync('Cargo.lock', 'utf8').split('\n')
+          let inPackage = false
+          let updatePackage = false
+          for (let i = 0; i < lines.length; i += 1) {
+            if (lines[i] === '[[package]]') {
+              inPackage = true
+              updatePackage = false
+              continue
+            }
+            if (inPackage && lines[i].startsWith('name = ')) {
+              updatePackage = lockPackages.has(lines[i].slice(8, -1))
+              continue
+            }
+            if (inPackage && updatePackage && lines[i].startsWith('version = ')) {
+              lines[i] = `version = "${version}"`
+              updatePackage = false
+              continue
+            }
+            if (inPackage && lines[i] === '') {
+              inPackage = false
+              updatePackage = false
+            }
+          }
+          fs.writeFileSync('Cargo.lock', `${lines.join('\n').replace(/\n+$/, '')}\n`)
+          NODE
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Cargo.toml Cargo.lock napi/Cargo.toml napi/package.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "update version to $CLEAN_VERSION"
+          git push origin HEAD:main
+
+      - name: Tag Repo
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        uses: richardsimko/update-tag@v1
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/download-artifact@v8
         with:
           path: bin/
@@ -200,16 +383,14 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
-          node-version: 24
+          node-version: 26
           registry-url: https://registry.npmjs.org
 
-      - name: Print npm version
-        run: |
-          node --version
-          npm --version
+      - name: Enable pnpm
+        run: corepack enable pnpm
 
       - name: Install npm dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
         working-directory: napi
 
       - name: Set npm package version
@@ -225,7 +406,7 @@ jobs:
           npm version "$VERSION" --no-git-tag-version --allow-same-version
 
       - name: Create platform npm package dirs
-        run: npm run create-npm-dirs
+        run: pnpm create-npm-dirs
         working-directory: napi
 
       - name: Download node artifacts
@@ -237,7 +418,7 @@ jobs:
 
       - name: Copy native artifacts into platform packages
         working-directory: napi
-        run: npm run artifacts
+        run: pnpm artifacts
 
       - name: Verify native artifacts
         shell: bash
@@ -249,6 +430,9 @@ jobs:
             linux-x64-musl \
             linux-arm64-musl \
             linux-riscv64-gnu \
+            linux-loong64-gnu \
+            linux-riscv64-musl \
+            linux-loong64-musl \
             darwin-x64 \
             darwin-arm64 \
             win32-x64-msvc \
@@ -262,8 +446,10 @@ jobs:
           test -f README.md
 
       - name: Publish platform npm packages
-        run: npx napi pre-publish --tag-style npm --no-gh-release
+        run: pnpm exec napi pre-publish --tag-style npm --no-gh-release
         working-directory: napi
+        env:
+          NPM_CONFIG_PROVENANCE: "true"
 
       - name: Verify npm package contents
         shell: bash
@@ -285,5 +471,5 @@ jobs:
         working-directory: napi
 
       - name: Publish npm package
-        run: npm publish --ignore-scripts --access public
+        run: npm publish --ignore-scripts --access public --provenance
         working-directory: napi
